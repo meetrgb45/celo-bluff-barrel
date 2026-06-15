@@ -27,7 +27,6 @@ export default function GameRoom() {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const setGameId = useGameStore((s) => s.setGameId);
-  const setGameMode = useGameStore((s) => s.setGameMode);
   const stakeAmount = useGameStore((s) => s.stakeAmount);
   const state = useGameStore((s) => s.state);
   const players = useGameStore((s) => s.players);
@@ -72,10 +71,10 @@ export default function GameRoom() {
   const { sendStateChanged } = useWebSocket({ address });
   const notifyStateChanged = sendStateChanged;
 
-  useEffect(() => { if (id) { setGameId(Number(id)); setGameMode(mode); } }, [id, mode, setGameId, setGameMode]);
+  useEffect(() => { if (id) { setGameId(Number(id)); setGameMode(mode); } }, [id, mode, setGameId]);
 
   // Reset triggered when state changes
-  useEffect(() => { if (state !== 'MultiSpinning') setTriggered(false); }, [state]);
+  useEffect(() => { setTriggered(false); }, [state]);
 
   // Sound on game over
   useEffect(() => { if (state === 'GameOver') sounds.gameOver(); }, [state]);
@@ -107,7 +106,7 @@ export default function GameRoom() {
       }
     }, 18000);
     return () => clearTimeout(retry);
-  }, [cofheReady, state, round, (() => {}), myPlayer?.alive]);
+  }, [state, round, myPlayer?.alive]);
 
   const iAmChallenger = players[currentTurnIndex]?.addr?.toLowerCase() === address?.toLowerCase();
   useEffect(() => {
@@ -127,7 +126,7 @@ export default function GameRoom() {
         if (useGameStore.getState().state === 'Challenging') setChallengePhase(null);
       }, 30000);
     }
-  }, [state, cofheReady, iAmChallenger, resolveChallenge, challengePhase, currentTurnIndex, lastClaimant, players]);
+  }, [state, iAmChallenger, challengePhase, currentTurnIndex, lastClaimant, players]);
 
   // Drive challenge overlay phases based on state transitions
   useEffect(() => {
@@ -142,27 +141,14 @@ export default function GameRoom() {
     }
     if ((prevStateRef.current === 'Challenging' && state === 'Spinning') ||
         (challengePhase === 'revealing' && state === 'Spinning')) {
-      // Wait for revealedCards before showing verdict (max 12s timeout)
-      let attempts = 0;
-      const waitForReveal = () => {
-        attempts++;
-        const cards = useGameStore.getState().revealedCards;
-        if (cards.length > 0) {
-          const pendingSpinner = useGameStore.getState().pendingSpinner;
-          const spinnerIsAccused = pendingSpinner?.toLowerCase() === players[challengeAccused]?.addr?.toLowerCase();
-          setChallengePhase(spinnerIsAccused ? 'verdict-lie' : 'verdict-valid');
-          setTimeout(() => setChallengePhase(null), 4000);
-        } else if (attempts < 12) {
-          setTimeout(waitForReveal, 1000);
-        } else {
-          // Timeout — dismiss overlay so game isn't stuck
-          setChallengePhase(null);
-        }
-      };
-      waitForReveal();
+      // Verdict: check pendingSpinner to determine who was caught
+      const pendingSpinner = useGameStore.getState().pendingSpinner;
+      const spinnerIsAccused = pendingSpinner?.toLowerCase() === players[challengeAccused]?.addr?.toLowerCase();
+      setChallengePhase(spinnerIsAccused ? 'verdict-lie' : 'verdict-valid');
+      setTimeout(() => setChallengePhase(null), 4000);
     }
     // If state moved past Spinning and overlay is still showing, dismiss it
-    if ((state === 'PlayerTurn' || state === 'GameOver' || state === 'MultiSpinning' || state === 'Targeting' || state === 'MultiTargeting' || state === 'Shooting') && challengePhase) {
+    if ((state === 'PlayerTurn' || state === 'GameOver') && challengePhase) {
       setChallengePhase(null);
     }
     prevStateRef.current = state;
@@ -178,7 +164,7 @@ export default function GameRoom() {
   const startGame = async () => {
     setError(''); setLoading(true);
     try {
-      const gas = await getHeavyGasOverrides(publicClient!);
+      const gas = await getGasOverrides(publicClient!);
       const hash = await writeContractAsync({ address: gameContractAddress, abi: gameAbi, functionName: 'startGame', args: [BigInt(id!)], ...gas });
       await publicClient!.waitForTransactionReceipt({ hash });
       notifyStateChanged();
@@ -349,7 +335,7 @@ export default function GameRoom() {
         {state === 'Challenging' && (
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontSize: '1.2rem', color: '#e94560' }}>Revealing cards...</p>
-            {iAmChallenger && !resolving && <button className="btn" style={{ marginTop: '0.8rem' }} onClick={resolveChallenge}>Reveal</button>}
+            {iAmChallenger && !resolving && <button className="btn" style={{ marginTop: '0.8rem' }} onClick={revealChallenge}>Reveal</button>}
             {resolving && <p style={{ fontSize: '0.7rem', color: '#8b7b5a', marginTop: '0.5rem' }}>Decrypting via FHE...</p>}
           </div>
         )}
@@ -361,7 +347,7 @@ export default function GameRoom() {
               <>
                 <img src="/revolver_chamber.png" alt="" className="revolver-spin" style={{ width: 120, margin: '0 auto 1rem' }} />
                 <p style={{ fontSize: '1.1rem', color: '#dfd5b4', marginBottom: '1rem' }}>Your turn to pull...</p>
-                {!spinning && <button className="btn red" style={{ fontSize: '1.2rem', padding: '0.7rem 2rem' }} onClick={resolveSpin}>Pull Trigger</button>}
+                {spinning && <p style={{ color: '#e94560', fontSize: '0.9rem' }}>Resolving spin...</p>}
                 {spinning && <p style={{ fontSize: '0.7rem', color: '#8b7b5a' }}>Resolving...</p>}
               </>
             ) : (
@@ -370,95 +356,6 @@ export default function GameRoom() {
           </div>
         )}
 
-        {state === 'MultiSpinning' && (
-          <div style={{ textAlign: 'center' }}>
-            <div className="heartbeat-vignette" />
-            <h3 style={{ fontSize: '1.3rem', color: '#e94560', marginBottom: '1rem' }}>DEVIL RETRIBUTION</h3>
-            {lastClaimant?.toLowerCase() === address?.toLowerCase() ? (
-              <p style={{ fontSize: '0.9rem', color: '#22c55e', marginBottom: '1rem' }}>You played the Devil Card. You are safe!</p>
-            ) : (
-              <>
-                <p style={{ fontSize: '0.85rem', color: '#dfd5b4', marginBottom: '1.5rem' }}>All players must face the barrel!</p>
-                <img src="/revolver_chamber.png" alt="" className="revolver-spin" style={{ width: 100, margin: '0 auto 1rem' }} />
-                {myPlayer?.alive && !spinning && !triggered && (
-                  <button className="btn red" style={{ fontSize: '1.1rem', padding: '0.7rem 2rem' }} onClick={async () => {
-                    for (let attempt = 0; attempt < 3; attempt++) {
-                      try {
-                        const gas = await getGasOverrides(publicClient!);
-                        await writeContractAsync({ address: gameContractAddress, abi: gameAbi, functionName: 'triggerMySpin', args: [BigInt(id!)], ...gas });
-                        setTriggered(true);
-                        notifyStateChanged();
-                        await new Promise(r => setTimeout(r, 4000));
-                        await resolveSpin();
-                        return;
-                      } catch (e: any) {
-                        if (/User rejected|denied/i.test(e?.message || '')) return;
-                        if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
-                      }
-                    }
-                  }}>Pull Trigger</button>
-                )}
-                {triggered && !spinning && <p style={{ fontSize: '0.85rem', color: '#8b7b5a' }}>Waiting for others...</p>}
-                {spinning && <p style={{ fontSize: '0.7rem', color: '#8b7b5a' }}>Resolving...</p>}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Chaos: Targeting — pick who to shoot */}
-        {(state === 'Targeting' || state === 'MultiTargeting') && (
-          <div style={{ textAlign: 'center' }}>
-            <h3 style={{ fontSize: '1.3rem', color: '#a855f7', marginBottom: '1rem' }}>CHOOSE YOUR TARGET</h3>
-            {(state === 'MultiTargeting' || pendingSpinner?.toLowerCase() === address?.toLowerCase()) ? (
-              <>
-                <p style={{ fontSize: '0.85rem', color: '#dfd5b4', marginBottom: '1.5rem' }}>Pick a player to shoot</p>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
-                  {players.filter((p) => p.alive && p.addr?.toLowerCase() !== address?.toLowerCase() && p.addr !== '0x0000000000000000000000000000000000000000').map((p) => {
-                    const pIdx = players.indexOf(p);
-                    const char = CHARACTERS[p.characterId % CHARACTERS.length];
-                    return (
-                      <button key={pIdx} className="btn red" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', padding: '0.8rem' }} onClick={async () => {
-                        for (let attempt = 0; attempt < 3; attempt++) {
-                          try {
-                            const gas = await getGasOverrides(publicClient!);
-                            const fn = state === 'MultiTargeting' ? 'chooseTargetMulti' : 'chooseTarget';
-                            await writeContractAsync({ address: gameContractAddress, abi: gameAbi, functionName: fn, args: [BigInt(id!), p.addr], ...gas });
-                            notifyStateChanged();
-                            return;
-                          } catch (e: any) {
-                            if (/User rejected|denied/i.test(e?.message || '')) return;
-                            if (attempt < 2) await new Promise(r => setTimeout(r, 1500));
-                          }
-                        }
-                      }}>
-                        <img src={char.img} alt="" style={{ width: 50, height: 50, borderRadius: '0.3rem' }} />
-                        <span style={{ fontSize: '0.7rem' }}>{char.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            ) : (
-              <p style={{ color: '#8b7b5a', fontSize: '0.9rem' }}>Waiting for shooter to pick target...</p>
-            )}
-          </div>
-        )}
-
-        {/* Chaos: Shooting — waiting for spin resolution */}
-        {state === 'Shooting' && (
-          <div style={{ textAlign: 'center' }}>
-            <div className="heartbeat-vignette" />
-            <img src="/revolver_chamber.png" alt="" className="revolver-spin" style={{ width: 100, margin: '0 auto 1rem' }} />
-            <p style={{ fontSize: '1rem', color: '#dfd5b4' }}>Shots firing...</p>
-            {pendingSpinner?.toLowerCase() === address?.toLowerCase() && !spinning && (
-              <button className="btn" style={{ marginTop: '1rem' }} onClick={resolveSpin}>Resolve Shot</button>
-            )}
-            {spinning && <p style={{ fontSize: '0.7rem', color: '#8b7b5a' }}>Resolving...</p>}
-            {pendingSpinner?.toLowerCase() !== address?.toLowerCase() && !spinning && (
-              <p style={{ fontSize: '0.75rem', color: '#8b7b5a', marginTop: '0.5rem' }}>Waiting for shot to resolve...</p>
-            )}
-          </div>
-        )}
 
         {state === 'GameOver' && (
           <div style={{ textAlign: 'center' }} id="game-result-card">
@@ -515,7 +412,7 @@ export default function GameRoom() {
       </div>
 
       {/* Bottom — Hand + Actions */}
-      {myPlayer?.alive && (state === 'PlayerTurn' || state === 'Challenging' || state === 'Spinning' || state === 'MultiSpinning') && (
+      {myPlayer?.alive && (state === 'PlayerTurn' || state === 'Challenging' || state === 'Spinning') && (
         <div style={{ padding: '1rem 1.5rem', background: 'rgba(0,0,0,0.5)', borderTop: '1px solid #3a2a1a', zIndex: 20 }}>
           <div className="chambers" style={{ justifyContent: 'center', marginBottom: '0.6rem' }}>
             {Array.from({ length: 6 }, (_, i) => <div key={i} className={`chamber ${i < (chamberPointers[address?.toLowerCase() || ''] || 0) ? 'safe' : ''}`} style={{ width: 12, height: 12 }} />)}
@@ -547,7 +444,7 @@ export default function GameRoom() {
         </div>
       )}
 
-      {!cofheReady && state !== 'WaitingForPlayers' && (
+      {false && (
         <div style={{ position: 'fixed', bottom: 8, left: 8, zIndex: 40, fontSize: '0.6rem', color: '#c9a84c' }}>Initializing encryption...</div>
       )}
 

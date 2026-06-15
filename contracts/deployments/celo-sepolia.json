@@ -1,0 +1,13 @@
+{
+  "network": "celo-sepolia",
+  "chainId": 11142220,
+  "deployer": "0x3Ba01A7992ecB412709F945D633577f116E85250",
+  "contracts": {
+    "LiarsBarDeck": "0xDCEc990780298E38b6Ca51e5e46b00910b5FFc06",
+    "LiarsBarRevolver": "0xf44dF571c44B339331C4ae0613792D955748E6Fb",
+    "LiarsBarGame": "0x68F027CC052Ea3A9E4C6E6e6714703FA1B53a466"
+  },
+  "usdc": "0x01C5C0122039549AD1493B8220cABEdD739BC44E",
+  "treasury": "0x3Ba01A7992ecB412709F945D633577f116E85250",
+  "timestamp": "2026-06-15T06:59:59.565Z"
+}
