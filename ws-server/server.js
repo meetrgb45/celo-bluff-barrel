@@ -1,41 +1,43 @@
+import 'dotenv/config';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import { ethers } from 'ethers';
+import { createPublicClient, createWalletClient, http, parseAbi, keccak256, encodePacked, decodeEventLog } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { randomBytes } from 'crypto';
 
-// ── Config ────────────────────────────────────────────────────────────────────
+// ── Config ─────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 const RPC_URL = process.env.CELO_SEPOLIA_RPC_URL || 'https://forno.celo-sepolia.celo-testnet.org';
 const RESOLVER_KEY = process.env.RESOLVER_PRIVATE_KEY;
 const GAME_ADDRESS = process.env.GAME_ADDRESS;
-const DECK_ADDRESS = process.env.DECK_ADDRESS;
 const REVOLVER_ADDRESS = process.env.REVOLVER_ADDRESS;
 
-// ── ABIs (minimal) ────────────────────────────────────────────────────────────
-const GAME_ABI = [
+const celoSepolia = {
+  id: 11142220,
+  name: 'Celo Sepolia',
+  nativeCurrency: { name: 'CELO', symbol: 'CELO', decimals: 18 },
+  rpcUrls: { default: { http: [RPC_URL] } },
+};
+
+// ── ABIs ───────────────────────────────────────────────────────────────────
+const GAME_ABI = parseAbi([
   'event RoundStarted(uint256 indexed gameId, uint8 round, uint8 targetCard, uint8 playerCount)',
   'event SpinTriggered(uint256 indexed gameId, address indexed player)',
   'event GameOver(uint256 indexed gameId, address indexed winner)',
-  'function getGameState(uint256) view returns (uint8,uint8,uint8,uint8,uint8,address)',
-  'function getPlayer(uint256,uint8) view returns (address,bool,uint8,bool,bool,uint8)',
-  'function onSpinResolved(uint256,bool) nonpayable',
-];
+  'function getPlayer(uint256 gameId, uint8 index) view returns (address addr, bool alive, uint8 points, bool usedExecute, bool usedDoubleSpin, uint8 characterId)',
+  'function onSpinResolved(uint256 gameId, bool fired)',
+]);
 
-const REVOLVER_ABI = [
-  'function commitBullet(uint256,address,bytes32) nonpayable',
-  'function resolveSpin(uint256,address,uint8,bytes32) nonpayable returns (bool)',
-];
+const REVOLVER_ABI = parseAbi([
+  'function commitBullet(uint256 gameId, address player, bytes32 commitment)',
+  'function resolveSpin(uint256 gameId, address player, uint8 position, bytes32 salt) returns (bool)',
+]);
 
-const DECK_ABI = [
-  'function hasCommitted(uint256,address) view returns (bool)',
-];
-
-// ── Deck composition by player count ─────────────────────────────────────────
-// 0=Ace, 1=King, 2=Queen, 3=Joker
+// ── Deck helpers ───────────────────────────────────────────────────────────
 function buildDeck(playerCount) {
-  if (playerCount === 2) return [...Array(3).fill(0), ...Array(3).fill(1), ...Array(3).fill(2), ...Array(1).fill(3)];
-  if (playerCount === 3) return [...Array(5).fill(0), ...Array(5).fill(1), ...Array(4).fill(2), ...Array(1).fill(3)];
-  return [...Array(6).fill(0), ...Array(6).fill(1), ...Array(6).fill(2), ...Array(2).fill(3)]; // 4p
+  if (playerCount === 2) return [...Array(3).fill(0), ...Array(3).fill(1), ...Array(3).fill(2), 3];
+  if (playerCount === 3) return [...Array(5).fill(0), ...Array(5).fill(1), ...Array(4).fill(2), 3];
+  return [...Array(6).fill(0), ...Array(6).fill(1), ...Array(6).fill(2), 3, 3];
 }
 
 function shuffle(arr) {
@@ -47,173 +49,192 @@ function shuffle(arr) {
   return a;
 }
 
-function makeSalt() {
-  return '0x' + randomBytes(32).toString('hex');
-}
+function makeSalt() { return `0x${randomBytes(32).toString('hex')}`; }
 
-/** keccak256(abi.encodePacked(c0,c1,c2,c3,c4, salt)) — matches Solidity contract */
 function handCommitment(cards, salt) {
-  return ethers.keccak256(
-    ethers.solidityPacked(['uint8','uint8','uint8','uint8','uint8','bytes32'], [...cards, salt])
-  );
+  return keccak256(encodePacked(['uint8','uint8','uint8','uint8','uint8','bytes32'], [...cards, salt]));
 }
 
-/** keccak256(abi.encodePacked(uint8 pos, bytes32 salt)) */
 function bulletCommitment(position, salt) {
-  return ethers.keccak256(ethers.solidityPacked(['uint8','bytes32'], [position, salt]));
+  return keccak256(encodePacked(['uint8','bytes32'], [position, salt]));
 }
 
-// ── State ─────────────────────────────────────────────────────────────────────
-// rooms: Map<gameId, Set<ws>>
-const rooms = new Map();
-// per-game server state
-// bullets: Map<gameId, Map<playerAddr, {position, salt}>>
-const bullets = new Map();
-// track active games for cleanup
-const activeGames = new Set();
+// ── State ──────────────────────────────────────────────────────────────────
+const rooms = new Map();         // gameId → Set<ws>
+const playerConnections = new Map(); // gameId → Map<lowerAddr, ws>
+const bullets = new Map();       // gameId → Map<lowerAddr, {position, salt}>
+const dealtHands = new Map();    // gameId → Map<lowerAddr, hand message>
 
-// ── Blockchain setup ──────────────────────────────────────────────────────────
-let provider, resolver, gameContract, revolverContract, deckContract;
+// ── Chain setup ────────────────────────────────────────────────────────────
+let publicClient, walletClient, account;
 
 function setupChain() {
-  if (!RESOLVER_KEY || !GAME_ADDRESS || !REVOLVER_ADDRESS || !DECK_ADDRESS) {
-    console.warn('[chain] Missing env vars — chain integration disabled (relay-only mode)');
+  if (!RESOLVER_KEY || !GAME_ADDRESS || !REVOLVER_ADDRESS) {
+    console.warn('[chain] Missing env vars — relay-only mode');
     return;
   }
-  provider = new ethers.JsonRpcProvider(RPC_URL);
-  resolver = new ethers.Wallet(RESOLVER_KEY, provider);
-  gameContract = new ethers.Contract(GAME_ADDRESS, GAME_ABI, resolver);
-  revolverContract = new ethers.Contract(REVOLVER_ADDRESS, REVOLVER_ABI, resolver);
-  deckContract = new ethers.Contract(DECK_ADDRESS, DECK_ABI, resolver);
 
-  console.log('[chain] Resolver wallet:', resolver.address);
+  account = privateKeyToAccount(RESOLVER_KEY);
+  publicClient = createPublicClient({ chain: celoSepolia, transport: http(RPC_URL) });
+  walletClient = createWalletClient({ account, chain: celoSepolia, transport: http(RPC_URL) });
 
-  // Listen for RoundStarted → deal cards
-  gameContract.on('RoundStarted', async (gameId, round, targetCard, playerCount, event) => {
-    const gid = gameId.toString();
-    console.log(`[chain] RoundStarted game=${gid} round=${round} players=${playerCount}`);
-    await dealRound(gid, Number(gameId), Number(round), Number(playerCount));
-    broadcast(gid, { type: 'stateChanged', from: 'server' });
-  });
+  console.log('[chain] Resolver wallet:', account.address);
 
-  // Listen for SpinTriggered → resolve spin
-  gameContract.on('SpinTriggered', async (gameId, player, event) => {
-    const gid = gameId.toString();
-    console.log(`[chain] SpinTriggered game=${gid} spinner=${player}`);
-    broadcast(gid, { type: 'spinResolving', gameId: gid, player });
-    await resolveSpin(gid, Number(gameId), player);
-    broadcast(gid, { type: 'stateChanged', from: 'server' });
-  });
+  const ROUND_STARTED = keccak256(encodePacked(['string'], ['RoundStarted(uint256,uint8,uint8,uint8)']));
+  const SPIN_TRIGGERED = keccak256(encodePacked(['string'], ['SpinTriggered(uint256,address)']));
+  const GAME_OVER = keccak256(encodePacked(['string'], ['GameOver(uint256,address)']));
 
-  // Listen for GameOver → clean up
-  gameContract.on('GameOver', (gameId, winner) => {
-    const gid = gameId.toString();
-    console.log(`[chain] GameOver game=${gid} winner=${winner}`);
-    bullets.delete(gid);
-    activeGames.delete(gid);
-  });
+  // Use keccak256 of event signature for topic matching
+  const roundStartedTopic = GAME_ABI.find(a => a.type === 'event' && a.name === 'RoundStarted');
+  const spinTriggeredTopic = GAME_ABI.find(a => a.type === 'event' && a.name === 'SpinTriggered');
+  const gameOverTopic = GAME_ABI.find(a => a.type === 'event' && a.name === 'GameOver');
 
-  console.log('[chain] Listening for on-chain events');
+  let lastBlock = 0n;
+  publicClient.getBlockNumber().then(b => { lastBlock = b; });
+
+  setInterval(async () => {
+    try {
+      const current = await publicClient.getBlockNumber();
+      if (current <= lastBlock) return;
+      const from = lastBlock + 1n;
+      lastBlock = current;
+
+      const logs = await publicClient.getLogs({
+        address: GAME_ADDRESS,
+        fromBlock: from,
+        toBlock: current,
+      });
+
+      for (const log of logs) {
+        try {
+          const event = decodeEventLog({ abi: GAME_ABI, data: log.data, topics: log.topics });
+
+          if (event.eventName === 'RoundStarted') {
+            const { gameId, round, playerCount } = event.args;
+            const gid = gameId.toString();
+            console.log(`[chain] RoundStarted game=${gid} round=${round} players=${playerCount}`);
+            await dealRound(gid, gameId, Number(round), Number(playerCount));
+            broadcast(gid, { type: 'stateChanged', from: 'server' });
+          }
+
+          if (event.eventName === 'SpinTriggered') {
+            const { gameId, player } = event.args;
+            const gid = gameId.toString();
+            console.log(`[chain] SpinTriggered game=${gid} spinner=${player}`);
+            broadcast(gid, { type: 'spinResolving', gameId: gid, player });
+            await resolveSpin(gid, gameId, player);
+            broadcast(gid, { type: 'stateChanged', from: 'server' });
+          }
+
+          if (event.eventName === 'GameOver') {
+            const { gameId } = event.args;
+            const gid = gameId.toString();
+            console.log(`[chain] GameOver game=${gid}`);
+            bullets.delete(gid);
+        dealtHands.delete(gid);
+          }
+        } catch {} // skip undecodable logs
+      }
+    } catch (e) {
+      console.error('[chain] poll error:', e.shortMessage || e.message);
+    }
+  }, 3000);
+
+  console.log('[chain] Polling for events every 3s');
 }
 
 async function dealRound(gid, gameId, round, playerCount) {
   try {
-    // Fetch alive player addresses
+    // Fetch alive players
     const players = [];
     for (let i = 0; i < playerCount; i++) {
-      const [addr, alive] = await gameContract.getPlayer(BigInt(gameId), i);
-      if (alive) players.push(addr);
+      const result = await publicClient.readContract({
+        address: GAME_ADDRESS, abi: GAME_ABI,
+        functionName: 'getPlayer', args: [gameId, i],
+      });
+      if (result.alive) players.push(result.addr);
     }
 
-    // Commit bullets for new game (round 1 only)
+    // Commit bullets on round 1
     if (round === 1) {
       const gameBullets = new Map();
       for (const addr of players) {
         const salt = makeSalt();
-        const position = Math.floor(Math.random() * 6) + 1; // 1-6
+        const position = Math.floor(Math.random() * 6) + 1;
         const commitment = bulletCommitment(position, salt);
         gameBullets.set(addr.toLowerCase(), { position, salt });
-        await revolverContract.commitBullet(BigInt(gameId), addr, commitment);
+        await walletClient.writeContract({
+          address: REVOLVER_ADDRESS, abi: REVOLVER_ABI,
+          functionName: 'commitBullet', args: [gameId, addr, commitment],
+        });
         console.log(`[chain] commitBullet game=${gid} player=${addr.slice(0,8)} pos=${position}`);
       }
       bullets.set(gid, gameBullets);
     }
 
-    // Deal and send cards privately to each player
+    // Deal cards
     const deck = shuffle(buildDeck(players.length));
-    const gameRoundId = BigInt(gameId) * 1000n + BigInt(round);
+    const gameRoundId = gameId * 1000n + BigInt(round);
 
     for (let i = 0; i < players.length; i++) {
       const hand = deck.slice(i * 5, i * 5 + 5);
       const salt = makeSalt();
       const commitment = handCommitment(hand, salt);
-
-      // Send hand privately to this player's WS connection
-      sendToPlayer(gid, players[i], {
-        type: 'hand',
-        gameId: gid,
-        round,
-        cards: hand,
-        salt,
-        commitment,
-        gameRoundId: gameRoundId.toString(),
-      });
-      console.log(`[chain] Dealt hand game=${gid} round=${round} player=${players[i].slice(0,8)} hand=${hand}`);
+      const handMsg = { type: 'hand', gameId: gid, round, cards: hand, salt, commitment, gameRoundId: gameRoundId.toString() };
+      if (!dealtHands.has(gid)) dealtHands.set(gid, new Map());
+      dealtHands.get(gid).set(players[i].toLowerCase(), handMsg);
+      sendToPlayer(gid, players[i], handMsg);
+      console.log(`[chain] Dealt hand game=${gid} round=${round} player=${players[i].slice(0,8)}`);
     }
-  } catch (err) {
-    console.error('[chain] dealRound error:', err.message);
+  } catch (e) {
+    console.error('[chain] dealRound error:', e.shortMessage || e.message);
   }
 }
 
 async function resolveSpin(gid, gameId, spinnerAddr) {
   try {
     const gameBullets = bullets.get(gid);
-    if (!gameBullets) {
-      console.error('[chain] No bullet data for game', gid);
-      return;
-    }
+    if (!gameBullets) { console.error('[chain] No bullet data for game', gid); return; }
     const bullet = gameBullets.get(spinnerAddr.toLowerCase());
-    if (!bullet) {
-      console.error('[chain] No bullet for player', spinnerAddr);
-      return;
-    }
+    if (!bullet) { console.error('[chain] No bullet for player', spinnerAddr); return; }
 
-    // Small delay to let UI show animation
     await new Promise(r => setTimeout(r, 1500));
 
-    const tx = await revolverContract.resolveSpin(
-      BigInt(gameId), spinnerAddr, bullet.position, bullet.salt
-    );
-    const receipt = await tx.wait();
+    const txHash = await walletClient.writeContract({
+      address: REVOLVER_ADDRESS, abi: REVOLVER_ABI,
+      functionName: 'resolveSpin',
+      args: [gameId, spinnerAddr, bullet.position, bullet.salt],
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
-    // Parse SpinResolved event to get fired result
-    const spinResolvedTopic = ethers.id('SpinResolved(uint256,address,bool)');
+    // Parse SpinResolved event from receipt to get fired result
     let fired = false;
     for (const log of receipt.logs) {
-      if (log.topics[0] === spinResolvedTopic) {
-        fired = ethers.AbiCoder.defaultAbiCoder().decode(['bool'], log.data)[0];
-        break;
-      }
+      try {
+        const event = decodeEventLog({
+          abi: parseAbi(['event SpinResolved(uint256 indexed gameId, address indexed player, bool fired)']),
+          data: log.data, topics: log.topics,
+        });
+        if (event.eventName === 'SpinResolved') { fired = event.args.fired; break; }
+      } catch {}
     }
 
     console.log(`[chain] resolveSpin game=${gid} fired=${fired}`);
-    await gameContract.onSpinResolved(BigInt(gameId), fired);
-  } catch (err) {
-    console.error('[chain] resolveSpin error:', err.message);
+    await walletClient.writeContract({
+      address: GAME_ADDRESS, abi: GAME_ABI,
+      functionName: 'onSpinResolved', args: [gameId, fired],
+    });
+  } catch (e) {
+    console.error('[chain] resolveSpin error:', e.shortMessage || e.message);
   }
 }
 
-// ── WS helpers ────────────────────────────────────────────────────────────────
-// playerConnections: Map<gameId, Map<lowerAddr, ws>>
-const playerConnections = new Map();
-
+// ── WS helpers ─────────────────────────────────────────────────────────────
 function sendToPlayer(gid, addr, msg) {
   const room = playerConnections.get(gid);
   if (!room) return;
   const ws = room.get(addr.toLowerCase());
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(msg));
-  }
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
 function broadcast(gid, msg) {
@@ -225,15 +246,12 @@ function broadcast(gid, msg) {
   }
 }
 
-// ── HTTP + WS server ──────────────────────────────────────────────────────────
+// ── HTTP + WS server ────────────────────────────────────────────────────────
 const server = createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', rooms: rooms.size, uptime: process.uptime() }));
-  } else {
-    res.writeHead(404);
-    res.end();
-  }
+  } else { res.writeHead(404); res.end(); }
 });
 
 const wss = new WebSocketServer({ server });
@@ -249,38 +267,29 @@ wss.on('connection', (ws) => {
       if (msg.type === 'join') {
         const roomId = String(msg.gameId);
         currentRoom = roomId;
-        currentAddr = msg.address ? msg.address.toLowerCase() : null;
-
+        currentAddr = msg.address?.toLowerCase() ?? null;
         if (!rooms.has(roomId)) rooms.set(roomId, new Set());
         rooms.get(roomId).add(ws);
-
         if (currentAddr) {
           if (!playerConnections.has(roomId)) playerConnections.set(roomId, new Map());
           playerConnections.get(roomId).set(currentAddr, ws);
         }
-
         ws.send(JSON.stringify({ type: 'joined', gameId: roomId, peers: rooms.get(roomId).size }));
-        return;
-      }
-
-      if (msg.type === 'event' && currentRoom) {
-        const room = rooms.get(currentRoom);
-        if (!room) return;
-        const payload = JSON.stringify({ type: 'event', data: msg.data });
-        for (const peer of room) {
-          if (peer !== ws && peer.readyState === WebSocket.OPEN) peer.send(payload);
+        // Re-send hand if already dealt (player joined late / reconnected)
+        if (currentAddr && dealtHands.has(roomId)) {
+          const hand = dealtHands.get(roomId).get(currentAddr);
+          if (hand) ws.send(JSON.stringify(hand));
         }
         return;
       }
 
-      if (msg.type === 'stateChanged' && currentRoom) {
+      if ((msg.type === 'event' || msg.type === 'stateChanged') && currentRoom) {
         const room = rooms.get(currentRoom);
         if (!room) return;
-        const payload = JSON.stringify({ type: 'stateChanged', from: msg.from });
+        const payload = JSON.stringify({ type: msg.type, data: msg.data, from: msg.from });
         for (const peer of room) {
           if (peer !== ws && peer.readyState === WebSocket.OPEN) peer.send(payload);
         }
-        return;
       }
     } catch {}
   });
@@ -299,5 +308,4 @@ wss.on('connection', (ws) => {
 setupChain();
 server.listen(PORT, () => {
   console.log(`WS server running on port ${PORT}`);
-  console.log(`Health: http://localhost:${PORT}/health`);
 });

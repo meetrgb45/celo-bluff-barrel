@@ -28,8 +28,9 @@ export function useWebSocket({ address, onHand }: UseWebSocketOptions = {}) {
     }
   }, []);
 
+  // Re-connect whenever gameId OR address changes so join always includes address
   useEffect(() => {
-    if (gameId === null) return;
+    if (gameId === null || !address) return;
 
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
@@ -43,7 +44,6 @@ export function useWebSocket({ address, onHand }: UseWebSocketOptions = {}) {
         const msg = JSON.parse(event.data);
 
         if (msg.type === 'hand') {
-          // Private message: WS server dealt our cards
           onHandRef.current?.(msg as HandMessage);
           return;
         }
@@ -59,15 +59,10 @@ export function useWebSocket({ address, onHand }: UseWebSocketOptions = {}) {
       } catch {}
     };
 
-    ws.onclose = () => {
-      wsRef.current = null;
-    };
+    ws.onclose = () => { wsRef.current = null; };
 
-    return () => {
-      ws.close();
-      wsRef.current = null;
-    };
-  }, [gameId, address]);
+    return () => { ws.close(); wsRef.current = null; };
+  }, [gameId, address]); // re-run when address becomes available
 
   return { sendStateChanged, sendEvent };
 }

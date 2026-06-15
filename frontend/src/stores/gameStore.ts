@@ -72,11 +72,11 @@ export const useGameStore = create<GameStore>((set) => ({
   lastClaimCount: 0,
   chamberPointers: {},
   pendingSpinner: '',
-  myCharacter: 0,
+  myCharacter: Number(localStorage.getItem('myCharacter') || 0),
   stakeAmount: 0n,
 
   setGameId: (id) => set({ gameId: id }),
-  setMyCharacter: (idx) => set({ myCharacter: idx }),
+  setMyCharacter: (idx) => { localStorage.setItem('myCharacter', String(idx)); set({ myCharacter: idx }); },
   setStakeAmount: (amount) => set({ stakeAmount: amount }),
 
   setMyHand: (hand, salt) => set({

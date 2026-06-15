@@ -66,7 +66,7 @@ export default function GameRoom() {
   const clearOutcome = () => {};
   const pendingSpinner = useGameStore((s) => s.pendingSpinner);
   const isMySpinTurn = pendingSpinner?.toLowerCase() === address?.toLowerCase();
-  useGameState();
+  useGameState(id ? Number(id) : undefined);
   useAutoAction();
   const { sendStateChanged } = useWebSocket({ address, onHand: ({ cards, salt, gameRoundId }) => receiveHand(cards, salt, gameRoundId) });
   const notifyStateChanged = sendStateChanged;
@@ -138,8 +138,9 @@ export default function GameRoom() {
   }, [state, currentTurnIndex, lastClaimant, players, challengeAccused, challengePhase]);
 
   const isMyTurn = players[currentTurnIndex]?.addr?.toLowerCase() === address?.toLowerCase();
-  const playerCount = players.filter((p) => p.addr !== '0x0000000000000000000000000000000000000000').length;
-  const isHost = players[0]?.addr?.toLowerCase() === address?.toLowerCase();
+  const aliveCount = useGameStore((s) => s.aliveCount);
+  const playerCount = players.filter((p) => p.addr && p.addr !== '0x0000000000000000000000000000000000000000').length || aliveCount;
+  const isHost = players.findIndex(p => p.addr?.toLowerCase() === address?.toLowerCase()) === 0;
   const canStart = state === 'WaitingForPlayers' && isHost && playerCount >= 2;
   const hasClaimToChallenge = lastClaimant && lastClaimant !== '0x0000000000000000000000000000000000000000' && lastClaimant.toLowerCase() !== address?.toLowerCase();
   const hasCardsLeft = playedCards.length < (mode === 'chaos' ? 3 : 5);
@@ -301,8 +302,8 @@ export default function GameRoom() {
             <p style={{ color: '#8b7b5a', marginBottom: '1rem' }}>{playerCount} seated (2–4 players)</p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '1.5rem' }}>
               {[0,1,2,3].map(i => (
-                <div key={i} className={`player-card`} style={{ backgroundImage: i < playerCount ? `url(${CHARS[i]})` : 'none', width: 80, height: 80, opacity: i < playerCount ? 1 : 0.2, border: i >= playerCount ? '2px dashed #5a4a3a' : undefined }}>
-                  {i < playerCount && <span className="player-name" style={{ fontSize: '0.6rem' }}>{CHAR_NAMES[i]}</span>}
+                <div key={i} className={`player-card`} style={{ backgroundImage: i < playerCount && CHARS[i] ? `url(${CHARS[i]})` : 'none', width: 80, height: 80, opacity: i < playerCount ? 1 : 0.2, border: i >= playerCount ? '2px dashed #5a4a3a' : undefined }}>
+                  {i < playerCount && CHAR_NAMES[i] && <span className="player-name" style={{ fontSize: '0.6rem' }}>{CHAR_NAMES[i]}</span>}
                 </div>
               ))}
             </div>

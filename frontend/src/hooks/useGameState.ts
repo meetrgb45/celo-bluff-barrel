@@ -3,9 +3,10 @@ import { usePublicClient } from 'wagmi';
 import { GAME_ADDRESS, GAME_ABI, REVOLVER_ADDRESS, REVOLVER_ABI } from '../lib/contracts';
 import { useGameStore, getStateMap } from '../stores/gameStore';
 
-export function useGameState() {
+export function useGameState(urlGameId?: number) {
   const publicClient = usePublicClient();
-  const gameId = useGameStore((s) => s.gameId);
+  const storeGameId = useGameStore((s) => s.gameId);
+  const gameId = urlGameId ?? storeGameId;
   const updateFromChain = useGameStore((s) => s.updateFromChain);
   const setPlayers = useGameStore((s) => s.setPlayers);
   const setLastClaim = useGameStore((s) => s.setLastClaim);
@@ -15,7 +16,6 @@ export function useGameState() {
 
   useEffect(() => {
     if (gameId === null || !publicClient) return;
-
     const poll = async () => {
       try {
         const [state, round, targetCard, currentTurnIndex, aliveCount, winner] =
@@ -26,18 +26,11 @@ export function useGameState() {
 
         updateFromChain({ state, round, targetCard, currentTurnIndex, aliveCount, winner });
 
-        // Player count (min 2, max 4)
-        let playerCount = 4;
-        try {
-          playerCount = Number(await publicClient.readContract({
-            address: GAME_ADDRESS, abi: GAME_ABI,
-            functionName: 'getPlayerCount', args: [BigInt(gameId)],
-          }));
-        } catch {}
+        // Use aliveCount from getGameState as player count (more reliable than getPlayerCount)
+        const fetchCount = Math.min(Number(aliveCount) || 4, 4);
 
-        // Players
-        const players = await Promise.all(
-          Array.from({ length: playerCount }, (_, i) =>
+        const players = (await Promise.all(
+          Array.from({ length: 4 }, (_, i) =>
             publicClient.readContract({
               address: GAME_ADDRESS, abi: GAME_ABI,
               functionName: 'getPlayer', args: [BigInt(gameId), i],
@@ -48,9 +41,9 @@ export function useGameState() {
               usedExecute: r[3] as boolean,
               usedDoubleSpin: r[4] as boolean,
               characterId: Number(r[5]),
-            }))
+            })).catch(() => null)
           )
-        );
+        )).filter(Boolean) as any[];
         setPlayers(players);
 
         // Last claim
@@ -96,7 +89,7 @@ export function useGameState() {
     };
 
     poll();
-    const interval = setInterval(poll, 3000);
+    const interval = setInterval(poll, 2000);
     const onWsChange = () => poll();
     window.addEventListener('ws-state-changed', onWsChange);
     return () => { clearInterval(interval); window.removeEventListener('ws-state-changed', onWsChange); };
