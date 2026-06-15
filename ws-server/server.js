@@ -144,6 +144,7 @@ function setupChain() {
 }
 
 async function dealRound(gid, gameId, round, playerCount) {
+  console.log(`[chain] dealRound start game=${gid} round=${round} playerCount=${playerCount}`);
   try {
     // Fetch alive players
     const players = [];
@@ -152,7 +153,7 @@ async function dealRound(gid, gameId, round, playerCount) {
         address: GAME_ADDRESS, abi: GAME_ABI,
         functionName: 'getPlayer', args: [gameId, i],
       });
-      if (result.alive) players.push(result.addr);
+      if (result[1]) players.push(result[0]); // [addr, alive, ...]
     }
 
     // Commit bullets on round 1
@@ -163,10 +164,11 @@ async function dealRound(gid, gameId, round, playerCount) {
         const position = Math.floor(Math.random() * 6) + 1;
         const commitment = bulletCommitment(position, salt);
         gameBullets.set(addr.toLowerCase(), { position, salt });
-        await walletClient.writeContract({
+        const cbHash = await walletClient.writeContract({
           address: REVOLVER_ADDRESS, abi: REVOLVER_ABI,
           functionName: 'commitBullet', args: [gameId, addr, commitment],
         });
+        await publicClient.waitForTransactionReceipt({ hash: cbHash });
         console.log(`[chain] commitBullet game=${gid} player=${addr.slice(0,8)} pos=${position}`);
       }
       bullets.set(gid, gameBullets);
@@ -187,7 +189,7 @@ async function dealRound(gid, gameId, round, playerCount) {
       console.log(`[chain] Dealt hand game=${gid} round=${round} player=${players[i].slice(0,8)}`);
     }
   } catch (e) {
-    console.error('[chain] dealRound error:', e.shortMessage || e.message);
+    console.error('[chain] dealRound ERROR:', e.message || e);
   }
 }
 
@@ -234,7 +236,7 @@ function sendToPlayer(gid, addr, msg) {
   const room = playerConnections.get(gid);
   if (!room) return;
   const ws = room.get(addr.toLowerCase());
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  if (ws?.readyState === WebSocket.OPEN) { console.log(`[ws] sent ${msg.type} to ${addr}`); ws.send(JSON.stringify(msg)); } else { console.log(`[ws] no connection for ${addr} in room ${gid}`); }
 }
 
 function broadcast(gid, msg) {

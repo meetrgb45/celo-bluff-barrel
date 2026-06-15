@@ -57,6 +57,7 @@ export default function GameRoom() {
   const [challengePhase, setChallengePhase] = useState<'accusation' | 'revealing' | 'verdict-lie' | 'verdict-valid' | null>(null);
   const [challengeAccuser, setChallengeAccuser] = useState(0);
   const [challengeAccused, setChallengeAccused] = useState(0);
+  const [revealedCards, setRevealedCards] = useState<number[]>([]);
   const prevStateRef = useRef(state);
 
   const { receiveHand } = useMyHand();
@@ -68,7 +69,10 @@ export default function GameRoom() {
   const isMySpinTurn = pendingSpinner?.toLowerCase() === address?.toLowerCase();
   useGameState(id ? Number(id) : undefined);
   useAutoAction();
-  const { sendStateChanged } = useWebSocket({ address, onHand: ({ cards, salt, gameRoundId }) => receiveHand(cards, salt, gameRoundId) });
+  const { sendStateChanged } = useWebSocket({ address, onHand: ({ cards, salt, gameRoundId }) => {
+    console.log('[hand] received cards:', cards, 'gameRoundId:', gameRoundId);
+    receiveHand(cards, salt, gameRoundId);
+  } });
   const notifyStateChanged = sendStateChanged;
 
   useEffect(() => { if (id) { setGameId(Number(id)); } }, [id, setGameId]);
@@ -84,6 +88,7 @@ export default function GameRoom() {
       prevRoundRef.current = round;
       challengeResolvedRef.current = false;
       resetRound();
+      setRevealedCards([]);
     }
   }, [round, resetRound]);
 
@@ -95,6 +100,11 @@ export default function GameRoom() {
   useEffect(() => {
     if (state === 'Challenging' && iAmAccused && !challengeResolvedRef.current) {
       challengeResolvedRef.current = true;
+      // Show played cards in overlay before submitting
+      const { myHand: hand, playedCards: played } = useGameStore.getState();
+      if (hand && played.length > 0) {
+        setRevealedCards(played.map(idx => hand[idx]).filter(v => v !== null && v !== undefined) as number[]);
+      }
       setTimeout(revealChallenge, 3000);
     }
     // Non-accuser: if we detect Challenging state and overlay isn't showing, show it
@@ -237,7 +247,7 @@ export default function GameRoom() {
   return (
     <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <SpinAnimation outcome={outcome} spinning={spinning} onDismiss={clearOutcome} />
-      <ChallengeOverlay phase={challengePhase} accuserIndex={challengeAccuser} accusedIndex={challengeAccused} onDismiss={() => setChallengePhase(null)} />
+      <ChallengeOverlay phase={challengePhase} accuserIndex={challengeAccuser} accusedIndex={challengeAccused} revealedCards={revealedCards} onDismiss={() => setChallengePhase(null)} />
 
       {/* Nav */}
       <nav style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid #3a2a1a', zIndex: 100 }}>

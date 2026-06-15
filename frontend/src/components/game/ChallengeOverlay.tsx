@@ -9,10 +9,11 @@ interface Props {
   phase: Phase;
   accuserIndex: number;
   accusedIndex: number;
+  revealedCards?: number[];
   onDismiss: () => void;
 }
 
-export default function ChallengeOverlay({ phase, accuserIndex, accusedIndex, onDismiss }: Props) {
+export default function ChallengeOverlay({ phase, accuserIndex, accusedIndex, revealedCards = [], onDismiss }: Props) {
   const lastClaimCount = useGameStore((s) => s.lastClaimCount);
   const targetCard = useGameStore((s) => s.targetCard);
   const players = useGameStore((s) => s.players);
@@ -84,14 +85,12 @@ export default function ChallengeOverlay({ phase, accuserIndex, accusedIndex, on
             <div style={{ display: 'flex', gap: '0.8rem' }}>
               {revealedCards.length > 0
                 ? revealedCards.map((card, i) => (
-                    <motion.div key={i} initial={{ rotateY: 180, scale: 0.8 }} animate={{ rotateY: 0, scale: 1 }} transition={{ delay: i * 0.3, type: 'spring' }}
-                      style={{ width: 70, height: 100, borderRadius: '0.4rem', backgroundImage: `url(${CARD_IMGS[card] || '/playing_card/back1.png'})`, backgroundSize: 'cover', backgroundPosition: 'center', border: `3px solid ${isCardValid(card) ? '#abcfb8' : '#e94560'}`, boxShadow: isCardValid(card) ? '0 0 12px rgba(171,207,184,0.5)' : '0 0 12px rgba(233,69,96,0.5)' }} />
+                    <motion.div key={i} initial={{ rotateY: 180 }} animate={{ rotateY: 0 }} transition={{ delay: i * 0.2 }}
+                      style={{ width: 70, height: 100, borderRadius: '0.4rem', backgroundImage: `url(${CARD_IMGS[card] ?? '/playing_card/back1.png'})`, backgroundSize: 'cover', border: `3px solid ${isCardValid(card) ? '#abcfb8' : '#e94560'}` }} />
                   ))
                 : Array.from({ length: lastClaimCount }, (_, i) => (
-                    <motion.div key={i}
-                      animate={{ rotateY: [0, 180, 360] }}
-                      transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.2, ease: 'easeInOut' }}
-                      style={{ width: 70, height: 100, borderRadius: '0.4rem', backgroundImage: 'url(/playing_card/back1.png)', backgroundSize: 'cover', backgroundPosition: 'center', border: '2px solid #5a4a3a', transformStyle: 'preserve-3d' }} />
+                    <motion.div key={i} animate={{ rotateY: [0, 180, 360] }} transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.2 }}
+                      style={{ width: 70, height: 100, borderRadius: '0.4rem', backgroundImage: 'url(/playing_card/back1.png)', backgroundSize: 'cover', border: '2px solid #5a4a3a' }} />
                   ))
               }
             </div>
@@ -112,14 +111,11 @@ export default function ChallengeOverlay({ phase, accuserIndex, accusedIndex, on
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-              {revealedCards.length > 0
-                ? revealedCards.map((card, i) => (
-                    <div key={i} style={{ width: 56, height: 80, borderRadius: '0.3rem', backgroundImage: `url(${CARD_IMGS[card] || '/playing_card/back1.png'})`, backgroundSize: 'cover', border: `2px solid ${isCardValid(card) ? '#abcfb8' : '#e94560'}` }} />
-                  ))
-                : Array.from({ length: lastClaimCount }, (_, i) => (
-                    <div key={i} style={{ width: 56, height: 80, borderRadius: '0.3rem', backgroundImage: 'url(/playing_card/back1.png)', backgroundSize: 'cover', border: '2px solid #e94560' }} />
-                  ))
-              }
+              {(revealedCards.length > 0 ? revealedCards : Array(lastClaimCount).fill(-1)).map((card, i) => (
+                    <div key={i} style={{ width: 56, height: 80, borderRadius: '0.3rem',
+                      backgroundImage: card >= 0 ? `url(${CARD_IMGS[card] ?? '/playing_card/back1.png'})` : 'url(/playing_card/back1.png)',
+                      backgroundSize: 'cover', border: `2px solid ${card >= 0 && !isCardValid(card) ? '#e94560' : '#abcfb8'}` }} />
+                  ))}
             </div>
             <p style={{ fontSize: '0.6rem', color: '#5a4a3a', marginTop: '1rem' }}>tap to continue</p>
           </motion.div>
@@ -137,14 +133,11 @@ export default function ChallengeOverlay({ phase, accuserIndex, accusedIndex, on
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-              {revealedCards.length > 0
-                ? revealedCards.map((card, i) => (
-                    <div key={i} style={{ width: 56, height: 80, borderRadius: '0.3rem', backgroundImage: `url(${CARD_IMGS[card] || '/playing_card/back1.png'})`, backgroundSize: 'cover', border: '2px solid #abcfb8' }} />
-                  ))
-                : Array.from({ length: lastClaimCount }, (_, i) => (
-                    <div key={i} style={{ width: 56, height: 80, borderRadius: '0.3rem', backgroundImage: 'url(/playing_card/back1.png)', backgroundSize: 'cover', border: '2px solid #abcfb8' }} />
-                  ))
-              }
+              {(revealedCards.length > 0 ? revealedCards : Array(lastClaimCount).fill(-1)).map((card, i) => (
+                    <div key={i} style={{ width: 56, height: 80, borderRadius: '0.3rem',
+                      backgroundImage: card >= 0 ? `url(${CARD_IMGS[card] ?? '/playing_card/back1.png'})` : 'url(/playing_card/back1.png)',
+                      backgroundSize: 'cover', border: `2px solid ${card >= 0 && !isCardValid(card) ? '#e94560' : '#abcfb8'}` }} />
+                  ))}
             </div>
             <p style={{ fontSize: '0.6rem', color: '#5a4a3a', marginTop: '1rem' }}>tap to continue</p>
           </motion.div>
