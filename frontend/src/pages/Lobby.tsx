@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { GAME_ADDRESS, GAME_ABI, USDC_ADDRESS } from '../lib/contracts';
 import { CHARACTERS } from '../lib/characters';
 import { useGameStore } from '../stores/gameStore';
-import { getGasOverrides } from '../lib/gas';
 
 const USDC_ABI = [
   { type: 'function', name: 'approve', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }], stateMutability: 'nonpayable' },
@@ -58,14 +57,14 @@ export default function Lobby() {
         setLoading('Approving USDC...');
         const approveHash = await writeContractAsync({
           address: USDC_ADDRESS, abi: USDC_ABI, functionName: 'approve',
-          args: [GAME_ADDRESS, stakeAmount], ...(await getGasOverrides(publicClient!)),
+          args: [GAME_ADDRESS, stakeAmount],
         });
         await publicClient!.waitForTransactionReceipt({ hash: approveHash });
         setLoading('Creating...');
       }
       const hash = await writeContractAsync({
         address: GAME_ADDRESS, abi: GAME_ABI, functionName: 'createGame',
-        args: [myCharacter, stakeAmount], ...(await getGasOverrides(publicClient!)),
+        args: [myCharacter, stakeAmount],
       });
       const receipt = await publicClient!.waitForTransactionReceipt({ hash });
       const gameLogs = receipt.logs.filter(l => l.address.toLowerCase() === GAME_ADDRESS.toLowerCase() && l.topics.length >= 2);
@@ -86,14 +85,14 @@ export default function Lobby() {
         setLoading('Approving USDC...');
         const approveHash = await writeContractAsync({
           address: USDC_ADDRESS, abi: USDC_ABI, functionName: 'approve',
-          args: [GAME_ADDRESS, stakeAmount], ...(await getGasOverrides(publicClient!)),
+          args: [GAME_ADDRESS, stakeAmount],
         });
         await publicClient!.waitForTransactionReceipt({ hash: approveHash });
         setLoading('Joining...');
       }
       const hash = await writeContractAsync({
         address: GAME_ADDRESS, abi: GAME_ABI, functionName: 'joinGame',
-        args: [BigInt(joinId), myCharacter], ...(await getGasOverrides(publicClient!)),
+        args: [BigInt(joinId), myCharacter],
       });
       await publicClient!.waitForTransactionReceipt({ hash });
       navigate(`/game/basic/${joinId}`);

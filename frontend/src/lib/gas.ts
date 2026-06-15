@@ -1,11 +1,7 @@
-import type { PublicClient } from 'viem';
-
-/** 1.2x gas multiplier for Celo Sepolia (much cheaper/stable than Arb Sepolia) */
-export async function getGasOverrides(publicClient: PublicClient) {
-  try {
-    const gasPrice = await publicClient.getGasPrice();
-    return { gasPrice: (gasPrice * 12n) / 10n };
-  } catch {
-    return {};
-  }
+/** 
+ * On Celo Sepolia, MetaMask gas estimation sometimes fails even when the call is valid.
+ * Provide a safe explicit gas limit to bypass it.
+ */
+export async function getGasOverrides(_publicClient?: unknown) {
+  return { gas: 500_000n };
 }
