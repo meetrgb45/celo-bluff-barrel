@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { SpinOutcome } from '../../hooks/useSpin';
 import { sounds } from '../../lib/sounds';
+
+type SpinOutcome = 'click' | 'bang' | null;
 
 interface Props {
   outcome: SpinOutcome;
