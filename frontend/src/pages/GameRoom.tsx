@@ -35,20 +35,19 @@ export default function GameRoom() {
   const targetCard = useGameStore((s) => s.targetCard);
   const myHand = useGameStore((s) => s.myHand);
   const selectedCards = useGameStore((s) => s.selectedCards);
+  const selectedIndices = selectedCards.map((sel, i) => sel ? i : -1).filter(i => i !== -1);
   const playedCards = useGameStore((s) => s.playedCards);
   const toggleCard = useGameStore((s) => s.toggleCard);
   const markCardsPlayed = useGameStore((s) => s.markCardsPlayed);
   const lastClaimant = useGameStore((s) => s.lastClaimant);
   const lastClaimCount = useGameStore((s) => s.lastClaimCount);
   const chamberPointers = useGameStore((s) => s.chamberPointers);
-  const resetPlayedCards = useGameStore((s) => s.resetPlayedCards);
+  const resetRound = useGameStore((s) => s.resetRound);
 
   const myPlayer = players.find((p) => p.addr?.toLowerCase() === address?.toLowerCase());
   const myIndex = players.findIndex((p) => p.addr?.toLowerCase() === address?.toLowerCase());
   const prevRoundRef = useRef(0);
   const challengeResolvedRef = useRef(false);
-  const handDecryptedRef = useRef(0);
-  // Hand comes from WS server via useWebSocket → useMyHand.receiveHand
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -83,30 +82,12 @@ export default function GameRoom() {
     if (round > 0 && round !== prevRoundRef.current) {
       prevRoundRef.current = round;
       challengeResolvedRef.current = false;
-      handDecryptedRef.current = 0;
-      resetPlayedCards();
+      resetRound();
     }
-  }, [round, resetPlayedCards]);
+  }, [round, resetRound]);
 
-  // Auto-decrypt: keep trying until hand is decrypted
-  useEffect(() => {
-    if (!myPlayer?.alive || round === 0) return;
-    if (state !== 'PlayerTurn' && state !== 'Challenging' && state !== 'Spinning') return;
-    if (handDecryptedRef.current === round) return;
 
-    handDecryptedRef.current = round;
-    const attempt = () => setTimeout((() => {}), 3000);
-    attempt();
 
-    // Retry after 15s if still null
-    const retry = setTimeout(() => {
-      const hand = useGameStore.getState().myHand;
-      if (hand.every(c => c === null)) {
-        handDecryptedRef.current = 0; // allow re-trigger
-      }
-    }, 18000);
-    return () => clearTimeout(retry);
-  }, [state, round, myPlayer?.alive]);
 
   const iAmChallenger = players[currentTurnIndex]?.addr?.toLowerCase() === address?.toLowerCase();
   useEffect(() => {
@@ -174,7 +155,7 @@ export default function GameRoom() {
   };
 
   const playCards = async () => {
-    if (selectedCards.length === 0) return;
+    if (selectedIndices.length === 0) return;
     setError('');
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -182,9 +163,9 @@ export default function GameRoom() {
         if (mode === 'chaos') {
           await writeContractAsync({ address: GAME_ADDRESS, abi: GAME_ABI, functionName: 'playCard', args: [BigInt(id!), selectedCards[0]], ...gas });
         } else {
-          await writeContractAsync({ address: GAME_ADDRESS, abi: GAME_ABI, functionName: 'playCards', args: [BigInt(id!), selectedCards.map((i) => i)], ...gas });
+          await writeContractAsync({ address: GAME_ADDRESS, abi: GAME_ABI, functionName: 'playCards', args: [BigInt(id!), selectedIndices], ...gas });
         }
-        markCardsPlayed(selectedCards);
+        markCardsPlayed(selectedIndices);
         notifyStateChanged();
         sounds.cardsFlip();
         return;
@@ -422,7 +403,7 @@ export default function GameRoom() {
               if (playedCards.includes(i)) return <div key={i} style={{ width: '5.5rem', aspectRatio: '1/1.4', borderRadius: '0.3rem', border: '1px dashed #3a2a1a', opacity: 0.15 }} />;
               return (
                 <div key={i}
-                  className={`playing-card ${selectedCards.includes(i) ? 'selected' : ''}`}
+                  className={`playing-card ${selectedCards[i] ? 'selected' : ''}`}
                   style={{ backgroundImage: card !== null ? `url(${CARD_IMGS[card]})` : 'url(/playing_card/back1.png)', width: '5.5rem', cursor: card !== null ? 'pointer' : 'default', opacity: card === null ? 0.5 : 1 }}
                   onClick={() => card !== null && toggleCard(i)}
                 />
@@ -431,7 +412,7 @@ export default function GameRoom() {
           </div>
           {state === 'PlayerTurn' && isMyTurn && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-              {hasCardsLeft && <button className="btn green" style={{ fontSize: '1rem', padding: '0.6rem 1.5rem' }} disabled={selectedCards.length === 0} onClick={playCards}>Play {selectedCards.length || ''} as {targetName(targetCard, mode)}</button>}
+              {hasCardsLeft && <button className="btn green" style={{ fontSize: '1rem', padding: '0.6rem 1.5rem' }} disabled={selectedIndices.length === 0} onClick={playCards}>Play {selectedIndices.length || ''} as {targetName(targetCard, mode)}</button>}
               {hasClaimToChallenge && <button className="btn red" style={{ fontSize: '1rem', padding: '0.6rem 1.5rem' }} onClick={callLiar}>LIAR!</button>}
               {!hasCardsLeft && !hasClaimToChallenge && <span style={{ fontSize: '0.8rem', color: '#8b7b5a' }}>Waiting...</span>}
             </div>
