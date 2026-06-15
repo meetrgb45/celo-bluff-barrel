@@ -64,10 +64,11 @@ export default function GameRoom() {
   const { useDoubleSpin: triggerDoubleSpin, forceTimeout, isPending: spinning } = useSpin();
   const outcome = null;
   const clearOutcome = () => {};
-  const isMySpinTurn = false;
+  const pendingSpinner = useGameStore((s) => s.pendingSpinner);
+  const isMySpinTurn = pendingSpinner?.toLowerCase() === address?.toLowerCase();
   useGameState();
   useAutoAction();
-  const { sendStateChanged } = useWebSocket({ address });
+  const { sendStateChanged } = useWebSocket({ address, onHand: ({ cards, salt, gameRoundId }) => receiveHand(cards, salt, gameRoundId) });
   const notifyStateChanged = sendStateChanged;
 
   useEffect(() => { if (id) { setGameId(Number(id)); } }, [id, setGameId]);
@@ -325,16 +326,11 @@ export default function GameRoom() {
         {state === 'Spinning' && (
           <div style={{ textAlign: 'center' }}>
             <div className="heartbeat-vignette" />
-            {isMySpinTurn ? (
-              <>
-                <img src="/revolver_chamber.png" alt="" className="revolver-spin" style={{ width: 120, margin: '0 auto 1rem' }} />
-                <p style={{ fontSize: '1.1rem', color: '#dfd5b4', marginBottom: '1rem' }}>Your turn to pull...</p>
-                {spinning && <p style={{ color: '#e94560', fontSize: '0.9rem' }}>Resolving spin...</p>}
-                {spinning && <p style={{ fontSize: '0.7rem', color: '#8b7b5a' }}>Resolving...</p>}
-              </>
-            ) : (
-              <p style={{ color: '#8b7b5a' }}>Waiting for trigger pull...</p>
-            )}
+            <img src="/revolver_chamber.png" alt="" className="revolver-spin" style={{ width: 120, margin: '0 auto 1rem' }} />
+            {isMySpinTurn
+              ? <p style={{ fontSize: '1.1rem', color: '#e94560' }}>Pulling the trigger...</p>
+              : <p style={{ color: '#8b7b5a', fontSize: '1rem' }}>Waiting for spin to resolve...</p>
+            }
           </div>
         )}
 
