@@ -71,7 +71,7 @@ export default function GameRoom() {
   const { sendStateChanged } = useWebSocket({ address });
   const notifyStateChanged = sendStateChanged;
 
-  useEffect(() => { if (id) { setGameId(Number(id)); setGameMode(mode); } }, [id, mode, setGameId]);
+  useEffect(() => { if (id) { setGameId(Number(id)); } }, [id, setGameId]);
 
   // Reset triggered when state changes
   useEffect(() => { setTriggered(false); }, [state]);
@@ -165,7 +165,7 @@ export default function GameRoom() {
     setError(''); setLoading(true);
     try {
       const gas = await getGasOverrides(publicClient!);
-      const hash = await writeContractAsync({ address: gameContractAddress, abi: gameAbi, functionName: 'startGame', args: [BigInt(id!)], ...gas });
+      const hash = await writeContractAsync({ address: GAME_ADDRESS, abi: GAME_ABI, functionName: 'startGame', args: [BigInt(id!)], ...gas });
       await publicClient!.waitForTransactionReceipt({ hash });
       notifyStateChanged();
       sounds.gameStart();
@@ -180,9 +180,9 @@ export default function GameRoom() {
       try {
         const gas = await getGasOverrides(publicClient!);
         if (mode === 'chaos') {
-          await writeContractAsync({ address: gameContractAddress, abi: gameAbi, functionName: 'playCard', args: [BigInt(id!), selectedCards[0]], ...gas });
+          await writeContractAsync({ address: GAME_ADDRESS, abi: GAME_ABI, functionName: 'playCard', args: [BigInt(id!), selectedCards[0]], ...gas });
         } else {
-          await writeContractAsync({ address: gameContractAddress, abi: gameAbi, functionName: 'playCards', args: [BigInt(id!), selectedCards.map((i) => i)], ...gas });
+          await writeContractAsync({ address: GAME_ADDRESS, abi: GAME_ABI, functionName: 'playCards', args: [BigInt(id!), selectedCards.map((i) => i)], ...gas });
         }
         markCardsPlayed(selectedCards);
         notifyStateChanged();
@@ -205,7 +205,7 @@ export default function GameRoom() {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const gas = await getGasOverrides(publicClient!);
-        await writeContractAsync({ address: gameContractAddress, abi: gameAbi, functionName: 'callLiar', args: [BigInt(id!)], ...gas });
+        await writeContractAsync({ address: GAME_ADDRESS, abi: GAME_ABI, functionName: 'callLiar', args: [BigInt(id!)], ...gas });
         notifyStateChanged();
         sounds.liar();
         return;
