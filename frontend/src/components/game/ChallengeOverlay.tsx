@@ -15,7 +15,6 @@ interface Props {
 export default function ChallengeOverlay({ phase, accuserIndex, accusedIndex, onDismiss }: Props) {
   const lastClaimCount = useGameStore((s) => s.lastClaimCount);
   const targetCard = useGameStore((s) => s.targetCard);
-  const revealedCards = useGameStore((s) => s.revealedCards);
   const players = useGameStore((s) => s.players);
   const gameMode = useGameStore((s) => s.gameMode);
 
@@ -96,7 +95,7 @@ export default function ChallengeOverlay({ phase, accuserIndex, accusedIndex, on
                   ))
               }
             </div>
-            <p style={{ fontSize: '0.7rem', color: '#8b7b5a' }}>{revealedCards.length > 0 ? 'Cards revealed!' : 'Decrypting via FHE network...'}</p>
+            <p style={{ fontSize: '0.7rem', color: '#8b7b5a' }}>Waiting for player to reveal...</p>
             <button onClick={onDismiss} style={{ marginTop: '1rem', fontSize: '0.65rem', color: '#5a4a3a', background: 'none', cursor: 'pointer', textDecoration: 'underline' }}>dismiss</button>
           </motion.div>
         )}
