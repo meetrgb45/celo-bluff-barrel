@@ -89,9 +89,10 @@ export default function GameRoom() {
 
 
 
+  const iAmAccused = lastClaimant?.toLowerCase() === address?.toLowerCase();
   const iAmChallenger = players[currentTurnIndex]?.addr?.toLowerCase() === address?.toLowerCase();
   useEffect(() => {
-    if (state === 'Challenging' && iAmChallenger && !challengeResolvedRef.current) {
+    if (state === 'Challenging' && iAmAccused && !challengeResolvedRef.current) {
       challengeResolvedRef.current = true;
       setTimeout(revealChallenge, 3000);
     }
@@ -107,7 +108,7 @@ export default function GameRoom() {
         if (useGameStore.getState().state === 'Challenging') setChallengePhase(null);
       }, 30000);
     }
-  }, [state, iAmChallenger, challengePhase, currentTurnIndex, lastClaimant, players]);
+  }, [state, iAmAccused, iAmChallenger, challengePhase, currentTurnIndex, lastClaimant, players]);
 
   // Drive challenge overlay phases based on state transitions
   useEffect(() => {
@@ -138,7 +139,7 @@ export default function GameRoom() {
   const isMyTurn = players[currentTurnIndex]?.addr?.toLowerCase() === address?.toLowerCase();
   const playerCount = players.filter((p) => p.addr !== '0x0000000000000000000000000000000000000000').length;
   const isHost = players[0]?.addr?.toLowerCase() === address?.toLowerCase();
-  const canStart = state === 'WaitingForPlayers' && isHost && playerCount === 4;
+  const canStart = state === 'WaitingForPlayers' && isHost && playerCount >= 2;
   const hasClaimToChallenge = lastClaimant && lastClaimant !== '0x0000000000000000000000000000000000000000' && lastClaimant.toLowerCase() !== address?.toLowerCase();
   const hasCardsLeft = playedCards.length < (mode === 'chaos' ? 3 : 5);
 
@@ -296,7 +297,7 @@ export default function GameRoom() {
         {state === 'WaitingForPlayers' && (
           <div style={{ textAlign: 'center' }}>
             <h2 style={{ fontSize: '1.8rem', color: '#c9a84c', marginBottom: '1rem' }}>Table #{id}</h2>
-            <p style={{ color: '#8b7b5a', marginBottom: '1rem' }}>{playerCount}/4 seated</p>
+            <p style={{ color: '#8b7b5a', marginBottom: '1rem' }}>{playerCount} seated (2–4 players)</p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '1.5rem' }}>
               {[0,1,2,3].map(i => (
                 <div key={i} className={`player-card`} style={{ backgroundImage: i < playerCount ? `url(${CHARS[i]})` : 'none', width: 80, height: 80, opacity: i < playerCount ? 1 : 0.2, border: i >= playerCount ? '2px dashed #5a4a3a' : undefined }}>
@@ -316,8 +317,8 @@ export default function GameRoom() {
         {state === 'Challenging' && (
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontSize: '1.2rem', color: '#e94560' }}>Revealing cards...</p>
-            {iAmChallenger && !resolving && <button className="btn" style={{ marginTop: '0.8rem' }} onClick={revealChallenge}>Reveal</button>}
-            {resolving && <p style={{ fontSize: '0.7rem', color: '#8b7b5a', marginTop: '0.5rem' }}>Decrypting via FHE...</p>}
+            {iAmAccused && !resolving && <button className="btn" style={{ marginTop: '0.8rem' }} onClick={revealChallenge}>Reveal your hand</button>}
+            {resolving && <p style={{ fontSize: '0.7rem', color: '#8b7b5a', marginTop: '0.5rem' }}>Submitting reveal...</p>}
           </div>
         )}
 
