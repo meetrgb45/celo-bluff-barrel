@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+build/
+artifacts/
+cache/
+typechain-types/
+deployments/*.json
+
+# Hardhat
+contracts/dist/
+
+# Frontend
+frontend/dist/
+frontend/.vite/
+
+# Misc
+.DS_Store
+*.log

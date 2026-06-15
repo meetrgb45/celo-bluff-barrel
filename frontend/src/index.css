@@ -1,0 +1,314 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Chau Philomene One';
+  font-style: normal;
+  font-weight: 400;
+  src: url(/ChauPhilomeneOne-Regular.ttf);
+}
+@font-face {
+  font-family: 'Chau Philomene One';
+  font-style: italic;
+  font-weight: 400;
+  src: url(/ChauPhilomeneOne-Italic.ttf);
+}
+
+:root {
+  font-family: 'Chau Philomene One';
+  color-scheme: dark;
+  color: #fff;
+  background-color: #151008;
+  background-image: url(/app_bg.svg);
+  background-size: 200px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; border: none; outline: none; }
+html, body, #root { width: 100%; height: 100%; }
+html.scrollable, html.scrollable body, html.scrollable #root { overflow: auto; height: auto; }
+
+/* Film grain overlay */
+html::after {
+  content: '';
+  pointer-events: none;
+  z-index: 999;
+  position: fixed;
+  inset: 0;
+  background-image: url(/film_grain.png);
+  background-repeat: repeat;
+  animation: filmGrain 0.2s steps(1) alternate infinite;
+}
+@keyframes filmGrain {
+  0% { background-position: 0px }
+  33% { background-position: 4px 0 }
+  66% { background-position: 4px }
+  100% { background-position: 0px 4px }
+}
+
+/* 3D Buttons */
+.btn {
+  font-family: inherit;
+  font-size: 1.1rem;
+  padding: 0.8rem 1.5rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: transform 0.2s;
+  border: 1px solid #d1bca1;
+  background-color: #ecd8b6;
+  background-image: radial-gradient(75% 25% at 50% 5%, #fff, transparent);
+  box-shadow: inset 0 0 2px 1px #fff, 0 1px 4px 1px rgba(0,0,0,0.1);
+  color: #544535;
+}
+.btn:hover { transform: scale(1.08); }
+.btn:active { transform: scale(0.96); }
+.btn.red {
+  border-color: #e55c3e;
+  background-color: #ffa69e;
+  color: #b11913;
+}
+.btn.green {
+  border-color: #4b6827;
+  background-color: #5c9d27;
+  color: #eaffe9;
+  text-shadow: 0 1px 1px #174007;
+}
+
+/* Player card */
+.player-card {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  border-radius: 1rem;
+  background-color: #7a7656;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  box-shadow: 0 0 3px #fccc94, 0 0 0 3px #5c5625, 0 0 6px rgba(0,0,0,0.4), 0 0 3px #9b934e inset, 0 2px 5px #000, 0 4px 16px #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  image-rendering: pixelated;
+}
+.player-card.dead { opacity: 0.5; transform: scale(0.9); }
+.player-card.active { box-shadow: 0 0 3px #fccc94, 0 0 0 3px #f6f2c9, 0 0 12px #f6f2c9, 0 0 3px #9b934e inset, 0 2px 5px #000; }
+
+.player-name {
+  position: absolute;
+  top: -0.8rem;
+  background-color: #dfd5b4;
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  color: #39361a;
+  text-shadow: 0 1px 2px #39361a;
+  box-shadow: 0 0 3px #7b7336 inset, 0 1px 2px #857e4e;
+  background-image: url(/player_name_bg.png);
+  background-size: 200%;
+  background-position: center;
+}
+
+/* Chambers */
+.chambers { display: flex; gap: 0.4rem; margin-top: 0.3rem; }
+.chamber {
+  width: 0.9rem; height: 0.9rem; border-radius: 50%;
+  background-color: #3b26001f;
+  box-shadow: 0 0 2px #c5a957, 0 0 3px #8b8345 inset;
+}
+.chamber.safe { background-color: rgb(95, 204, 95); box-shadow: 0 0 3px #698d4a, 0 1px 4px #417937; }
+.chamber.bang { background-color: rgb(186, 16, 16); box-shadow: 0 0 2px #3d1a1a; }
+
+/* Playing card */
+.playing-card {
+  width: 5.5rem;
+  aspect-ratio: 1/1.4;
+  border-radius: 0.5rem;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 0 1px #000, 0 2px 5px #000, 0 4px 16px #000, 0 0 1px #514c23 inset;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.playing-card:hover { transform: translateY(-8px); }
+.playing-card.selected { transform: translateY(-16px); box-shadow: 0 0 8px #f6f2c9, 0 2px 5px #000, 0 4px 16px #000; }
+
+/* Target card (larger) */
+.target-card {
+  width: 7rem;
+  aspect-ratio: 1/1.4;
+  border-radius: 0.6rem;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 0 1px #000, 0 2px 5px #000, 0 4px 16px #000;
+}
+
+/* Paperboard panel */
+.paperboard-panel {
+  border-radius: 1.5rem;
+  background-image: url(/paperboard_background.jpg);
+  background-repeat: repeat-y;
+  background-size: 100% auto;
+  background-color: #7a7656;
+  image-rendering: pixelated;
+  box-shadow: 0 0 4px #fccc94, 0 0 3px #363318 inset, 0 0 6px rgba(0,0,0,0.4), 0 0 4px #9b934e inset, 0 2px 5px #000, 0 4px 16px #000;
+}
+
+/* Game logo */
+.game-logo {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  animation: logoFloat 4s infinite alternate ease-in-out;
+}
+@keyframes logoFloat {
+  0% { transform: rotate3d(0,0,0,0deg) scale(1) }
+  50% { transform: rotate3d(1,0.2,0,5deg) scale(1.02) }
+  100% { transform: rotate3d(0,0,0,0deg) scale(0.98) }
+}
+
+/* Scattered cards background */
+.cards-bg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+.floating-card {
+  position: absolute;
+  width: 4.3rem;
+  height: 6rem;
+  border-radius: 0.25rem;
+  background-size: cover;
+  background-position: center;
+  background-color: #000;
+  opacity: 0.35;
+  box-shadow: 0 0 1px #000, 0 1px 2px #000, 0 2px 5px #000, 0 0 1px #514c23 inset;
+  image-rendering: crisp-edges;
+  animation: cardPopIn 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  transform: scale(0);
+}
+@keyframes cardPopIn {
+  0% { transform: rotate(var(--rot)) scale(3); opacity: 0; filter: blur(10px); }
+  100% { transform: rotate(var(--rot)) scale(1); opacity: 0.35; filter: blur(0px); }
+}
+.floating-card.static {
+  animation: none;
+  transform: rotate(var(--rot));
+  opacity: 0.2;
+}
+
+/* Hourglass rotation */
+.hourglass-spin {
+  animation: hourglassRotate 2s ease-in-out infinite;
+}
+@keyframes hourglassRotate {
+  0% { transform: rotate(0deg); }
+  50% { transform: rotate(180deg); }
+  100% { transform: rotate(180deg); }
+}
+
+/* Revolver spinning */
+.revolver-spin {
+  animation: revolverSpin 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes revolverSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Heartbeat vignette pulse (full screen) */
+.heartbeat-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  animation: heartbeatVignette 1s ease-in-out infinite;
+  z-index: 10;
+}
+@keyframes heartbeatVignette {
+  0%, 100% { box-shadow: inset 0 0 80px transparent; }
+  50% { box-shadow: inset 0 0 80px rgba(233, 69, 96, 0.3); }
+}
+
+/* Safe overlay — flash then green relief */
+.overlay-safe {
+  animation: safeRelief 0.6s ease-out;
+}
+.overlay-safe::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  animation: safeGreenFade 1s ease-out forwards;
+}
+@keyframes safeRelief {
+  0% { transform: scale(1.03); }
+  30% { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+@keyframes safeGreenFade {
+  0%, 60% { opacity: 0; }
+  100% { opacity: 1; background: rgba(171, 207, 184, 0.1); }
+}
+
+/* Bang overlay — shake then red */
+.overlay-bang {
+  animation: bangShake 0.5s ease-out;
+}
+.overlay-bang::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(233, 69, 96, 0.15);
+  pointer-events: none;
+  z-index: -1;
+  animation: bangRedFade 0.8s ease-out forwards;
+}
+@keyframes bangRedFade {
+  0%, 60% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes bangShake {
+  0% { transform: translateX(0); }
+  10% { transform: translateX(-8px); }
+  20% { transform: translateX(8px); }
+  30% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  50% { transform: translateX(-4px); }
+  60% { transform: translateX(4px); }
+  70% { transform: translateX(-2px); }
+  100% { transform: translateX(0); }
+}
+
+.bang-text {
+  animation: bangPulse 0.8s ease-out;
+}
+@keyframes bangPulse {
+  0% { transform: scale(2); opacity: 0; }
+  50% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+
+
+/* Orbit cards (waiting page) — dealing from center */
+.floating-card.orbit {
+  width: 4.7rem;
+  height: 6.6rem;
+  opacity: 0;
+  animation: cardDeal 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+@keyframes cardDeal {
+  0% {
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.6);
+    opacity: 0.8;
+  }
+  100% {
+    transform: rotate(var(--rot)) scale(1);
+    opacity: 0.2;
+  }
+}

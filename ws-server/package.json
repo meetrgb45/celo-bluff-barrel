@@ -1,0 +1,13 @@
+{
+  "name": "bluff-barrel-ws-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "ethers": "^6.4.0",
+    "ws": "^8.18.0"
+  }
+}
