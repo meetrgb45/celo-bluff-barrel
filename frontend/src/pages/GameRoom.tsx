@@ -150,9 +150,8 @@ export default function GameRoom() {
       sounds.gong();
       setTimeout(() => { setChallengePhase('revealing'); sounds.cardFlip(); }, 2000);
     }
-    // Spin started
+    // Reset outcome when entering Spinning (animation shown only after trigger pull)
     if (prevStateRef.current !== 'Spinning' && state === 'Spinning') {
-      setSpinningAnim(true);
       setSpinOutcome(null);
     }
     // Spin resolved: left Spinning state
@@ -165,6 +164,14 @@ export default function GameRoom() {
     }
     if ((prevStateRef.current === 'Challenging' && state === 'Spinning') ||
         (challengePhase === 'revealing' && state === 'Spinning')) {
+      // Re-broadcast cards on verdict so all peers see them
+      if (iAmAccused) {
+        const { playedCards: played, myHand: hand } = useGameStore.getState();
+        if (hand && played.length > 0) {
+          const cards = played.map((idx: number) => hand[idx]).filter((v: any) => v !== null && v !== undefined) as number[];
+          sendEvent({ type: 'cardsRevealed', cards });
+        }
+      }
       // Verdict: check pendingSpinner to determine who was caught
       const pendingSpinner = useGameStore.getState().pendingSpinner;
       const spinnerIsAccused = pendingSpinner?.toLowerCase() === players[challengeAccused]?.addr?.toLowerCase();
@@ -373,7 +380,7 @@ export default function GameRoom() {
               <>
                 <p style={{ fontSize: '1rem', color: '#dfd5b4', marginBottom: '1rem' }}>Your fate awaits...</p>
                 <button className="btn red" style={{ fontSize: '1.2rem', padding: '0.7rem 2rem' }}
-                  onClick={sendPullTrigger}>
+                  onClick={() => { setSpinningAnim(true); sendPullTrigger(); }}>
                   🔫 Pull Trigger
                 </button>
               </>
