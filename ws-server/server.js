@@ -200,6 +200,7 @@ async function resolveSpin(gid, gameId, spinnerAddr) {
     const bullet = gameBullets.get(spinnerAddr.toLowerCase());
     if (!bullet) { console.error('[chain] No bullet for player', spinnerAddr); return; }
 
+    console.log(`[chain] resolveSpin game=${gid} spinner=${spinnerAddr.slice(0,8)}`);
     await new Promise(r => setTimeout(r, 1500));
 
     const txHash = await walletClient.writeContract({
