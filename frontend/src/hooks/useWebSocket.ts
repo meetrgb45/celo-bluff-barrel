@@ -29,6 +29,12 @@ export function useWebSocket({ address, onHand }: UseWebSocketOptions = {}) {
     }
   }, []);
 
+  const sendPullTrigger = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN && gameId !== null) {
+      wsRef.current.send(JSON.stringify({ type: 'pullTrigger', gameId: String(gameId), address }));
+    }
+  }, [gameId, address]);
+
   // Re-connect whenever gameId OR address changes so join always includes address
   useEffect(() => {
     if (gameId === null || !address) return;
@@ -49,7 +55,7 @@ export function useWebSocket({ address, onHand }: UseWebSocketOptions = {}) {
           return;
         }
 
-        if (msg.type === 'stateChanged' || msg.type === 'spinResolving') {
+        if (msg.type === 'stateChanged' || msg.type === 'spinResolving' || msg.type === 'spinPending') {
           window.dispatchEvent(new CustomEvent('ws-state-changed', { detail: msg }));
           return;
         }
@@ -65,5 +71,5 @@ export function useWebSocket({ address, onHand }: UseWebSocketOptions = {}) {
     return () => { ws.close(); wsRef.current = null; };
   }, [gameId, address]); // re-run when address becomes available
 
-  return { sendStateChanged, sendEvent };
+  return { sendStateChanged, sendEvent, sendPullTrigger };
 }

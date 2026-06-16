@@ -64,6 +64,7 @@ const rooms = new Map();         // gameId → Set<ws>
 const playerConnections = new Map(); // gameId → Map<lowerAddr, ws>
 const bullets = new Map();       // gameId → Map<lowerAddr, {position, salt}>
 const dealtHands = new Map();    // gameId → Map<lowerAddr, hand message>
+const pendingSpins = new Map();   // gameId → { gameId (bigint), spinnerAddr }
 
 // ── Chain setup ────────────────────────────────────────────────────────────
 let publicClient, walletClient, account;
@@ -121,9 +122,9 @@ function setupChain() {
             const { gameId, player } = event.args;
             const gid = gameId.toString();
             console.log(`[chain] SpinTriggered game=${gid} spinner=${player}`);
-            broadcast(gid, { type: 'spinResolving', gameId: gid, player });
-            await resolveSpin(gid, gameId, player);
-            broadcast(gid, { type: 'stateChanged', from: 'server' });
+            // Store pending — wait for spinner to click Pull Trigger
+            pendingSpins.set(gid, { gameId, spinnerAddr: player });
+            broadcast(gid, { type: 'spinPending', gameId: gid, spinner: player });
           }
 
           if (event.eventName === 'GameOver') {
@@ -283,6 +284,22 @@ wss.on('connection', (ws) => {
           const hand = dealtHands.get(roomId).get(currentAddr);
           if (hand) ws.send(JSON.stringify(hand));
         }
+        return;
+      }
+
+      if (msg.type === 'pullTrigger' && currentRoom) {
+        const pending = pendingSpins.get(currentRoom);
+        if (!pending) return;
+        if (msg.address?.toLowerCase() !== pending.spinnerAddr.toLowerCase()) return;
+        pendingSpins.delete(currentRoom);
+        console.log(`[chain] Pull trigger game=${currentRoom} spinner=${pending.spinnerAddr.slice(0,8)}`);
+        broadcast(currentRoom, { type: 'spinResolving', gameId: currentRoom, player: pending.spinnerAddr });
+        const room = currentRoom;
+        const pen = { ...pending };
+        (async () => {
+          await resolveSpin(room, pen.gameId, pen.spinnerAddr);
+          broadcast(room, { type: 'stateChanged', from: 'server' });
+        })();
         return;
       }
 

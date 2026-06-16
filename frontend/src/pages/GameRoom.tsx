@@ -72,7 +72,7 @@ export default function GameRoom() {
   const isMySpinTurn = pendingSpinner?.toLowerCase() === address?.toLowerCase();
   useGameState(id ? Number(id) : undefined);
   useAutoAction();
-  const { sendStateChanged, sendEvent } = useWebSocket({ address, onHand: ({ cards, salt, gameRoundId }) => {
+  const { sendStateChanged, sendEvent, sendPullTrigger } = useWebSocket({ address, onHand: ({ cards, salt, gameRoundId }) => {
     console.log('[hand] received cards:', cards, 'gameRoundId:', gameRoundId);
     receiveHand(cards, salt, gameRoundId);
   } });
@@ -369,10 +369,22 @@ export default function GameRoom() {
           <div style={{ textAlign: 'center' }}>
             <div className="heartbeat-vignette" />
             <img src="/revolver_chamber.png" alt="" className="revolver-spin" style={{ width: 120, margin: '0 auto 1rem' }} />
-            {isMySpinTurn
-              ? <p style={{ fontSize: '1.1rem', color: '#e94560' }}>Pulling the trigger...</p>
-              : <p style={{ color: '#8b7b5a', fontSize: '1rem' }}>Waiting for spin to resolve...</p>
-            }
+            {isMySpinTurn ? (
+              <>
+                <p style={{ fontSize: '1rem', color: '#dfd5b4', marginBottom: '1rem' }}>Your fate awaits...</p>
+                <button className="btn red" style={{ fontSize: '1.2rem', padding: '0.7rem 2rem' }}
+                  onClick={sendPullTrigger}>
+                  🔫 Pull Trigger
+                </button>
+              </>
+            ) : (
+              <p style={{ color: '#8b7b5a', fontSize: '1rem' }}>
+                {(() => {
+                  const idx = players.findIndex(p => p.addr?.toLowerCase() === pendingSpinner?.toLowerCase());
+                  return `Waiting for ${idx >= 0 ? CHAR_NAMES[idx] : 'spinner'} to pull the trigger...`;
+                })()}
+              </p>
+            )}
           </div>
         )}
 
