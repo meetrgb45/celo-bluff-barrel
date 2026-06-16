@@ -62,9 +62,12 @@ export default function GameRoom() {
 
   const { receiveHand } = useMyHand();
   const { revealChallenge, isPending: resolving } = useChallenge();
-  const { useDoubleSpin: triggerDoubleSpin, forceTimeout, isPending: spinning } = useSpin();
-  const outcome = null;
-  const clearOutcome = () => {};
+  const { useDoubleSpin: triggerDoubleSpin, forceTimeout } = useSpin();
+  const [spinOutcome, setSpinOutcome] = useState<'click' | 'bang' | null>(null);
+  const [spinningAnim, setSpinningAnim] = useState(false);
+  const spinning = spinningAnim;
+  const outcome = spinOutcome;
+  const clearOutcome = () => { setSpinOutcome(null); setSpinningAnim(false); };
   const pendingSpinner = useGameStore((s) => s.pendingSpinner);
   const isMySpinTurn = pendingSpinner?.toLowerCase() === address?.toLowerCase();
   useGameState(id ? Number(id) : undefined);
@@ -131,6 +134,19 @@ export default function GameRoom() {
       setChallengePhase('accusation');
       sounds.gong();
       setTimeout(() => { setChallengePhase('revealing'); sounds.cardFlip(); }, 2000);
+    }
+    // Spin started
+    if (prevStateRef.current !== 'Spinning' && state === 'Spinning') {
+      setSpinningAnim(true);
+      setSpinOutcome(null);
+    }
+    // Spin resolved: left Spinning state
+    if (prevStateRef.current === 'Spinning' && state !== 'Spinning') {
+      setSpinningAnim(false);
+      const spinner = useGameStore.getState().pendingSpinner;
+      const alivePlayers = useGameStore.getState().players.filter(p => p.alive);
+      const spinnerAlive = alivePlayers.some(p => p.addr?.toLowerCase() === spinner?.toLowerCase());
+      setSpinOutcome(spinnerAlive ? 'click' : 'bang');
     }
     if ((prevStateRef.current === 'Challenging' && state === 'Spinning') ||
         (challengePhase === 'revealing' && state === 'Spinning')) {
