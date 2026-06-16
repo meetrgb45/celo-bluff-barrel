@@ -1,7 +1,8 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useGameStore } from '../stores/gameStore';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080';
+const WS_URL = import.meta.env.VITE_WS_URL ||
+  (location.protocol === 'https:' ? 'wss://localhost:8080' : 'ws://localhost:8080');
 
 type HandMessage = { type: 'hand'; gameId: string; round: number; cards: number[]; salt: string; gameRoundId: string };
 
