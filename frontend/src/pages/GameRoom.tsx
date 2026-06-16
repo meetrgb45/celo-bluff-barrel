@@ -72,7 +72,7 @@ export default function GameRoom() {
   const isMySpinTurn = pendingSpinner?.toLowerCase() === address?.toLowerCase();
   useGameState(id ? Number(id) : undefined);
   useAutoAction();
-  const { sendStateChanged } = useWebSocket({ address, onHand: ({ cards, salt, gameRoundId }) => {
+  const { sendStateChanged, sendEvent } = useWebSocket({ address, onHand: ({ cards, salt, gameRoundId }) => {
     console.log('[hand] received cards:', cards, 'gameRoundId:', gameRoundId);
     receiveHand(cards, salt, gameRoundId);
   } });
@@ -98,6 +98,18 @@ export default function GameRoom() {
 
 
 
+  // Receive revealed cards broadcast from accused player
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const msg = (e as CustomEvent).detail;
+      if (msg?.type === 'cardsRevealed' && Array.isArray(msg.cards)) {
+        setRevealedCards(msg.cards);
+      }
+    };
+    window.addEventListener('ws-game-event', handler);
+    return () => window.removeEventListener('ws-game-event', handler);
+  }, []);
+
   const iAmAccused = lastClaimant?.toLowerCase() === address?.toLowerCase();
   const iAmChallenger = players[currentTurnIndex]?.addr?.toLowerCase() === address?.toLowerCase();
   useEffect(() => {
@@ -106,7 +118,9 @@ export default function GameRoom() {
       // Show played cards in overlay before submitting
       const { myHand: hand, playedCards: played } = useGameStore.getState();
       if (hand && played.length > 0) {
-        setRevealedCards(played.map(idx => hand[idx]).filter(v => v !== null && v !== undefined) as number[]);
+        const cards = played.map(idx => hand[idx]).filter(v => v !== null && v !== undefined) as number[];
+        setRevealedCards(cards);
+        sendEvent({ type: 'cardsRevealed', cards });
       }
       setTimeout(revealChallenge, 3000);
     }
@@ -127,6 +141,7 @@ export default function GameRoom() {
   // Drive challenge overlay phases based on state transitions
   useEffect(() => {
     if (prevStateRef.current === 'PlayerTurn' && state === 'Challenging') {
+      setRevealedCards([]); // clear stale cards from previous challenge
       const accuserIdx = currentTurnIndex;
       const accusedIdx = players.findIndex(p => p.addr?.toLowerCase() === lastClaimant?.toLowerCase());
       setChallengeAccuser(accuserIdx);
